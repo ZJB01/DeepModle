@@ -5,7 +5,8 @@
     <OutputType>Library</OutputType>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <SignAssembly>true</SignAssembly>
-    <AssemblyOriginatorKeyFile>SwCubeAddIn.snk</AssemblyOriginatorKeyFile>
+    <AssemblyOriginatorKeyFile>DeepModel.snk</AssemblyOriginatorKeyFile>
+    <RootNamespace>DeepModel</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
