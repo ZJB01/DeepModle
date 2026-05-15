@@ -106,12 +106,42 @@ namespace DeepModel.Pipe
                         string treeErr = Modeling.DocumentOps.GetDesignTree(app, out string tree);
                         if (treeErr != null) return $"ERR {treeErr}";
                         if (string.IsNullOrEmpty(tree)) return "OK (empty)";
-                        // 单行输出，用 | 分隔特征
                         var lines = tree.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                         return $"OK {lines.Length}|{string.Join("|", lines)}";
 
+                    case "SKETCH":
+                        if (string.IsNullOrWhiteSpace(arg)) return "ERR usage: SKETCH <FRONT|TOP|RIGHT>";
+                        string sketchErr = Modeling.ModelingOps.StartSketch(app, arg);
+                        return sketchErr == null ? $"OK sketch on {arg}" : $"ERR {sketchErr}";
+
+                    case "RECT":
+                        // RECT <w> <h> [cx] [cy]
+                        var rp = arg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (rp.Length < 2) return "ERR usage: RECT <w_mm> <h_mm> [cx_mm] [cy_mm]";
+                        if (!double.TryParse(rp[0], out double rw)) return "ERR bad w";
+                        if (!double.TryParse(rp[1], out double rh)) return "ERR bad h";
+                        double rcx = rp.Length > 2 && double.TryParse(rp[2], out rcx) ? rcx : 0;
+                        double rcy = rp.Length > 3 && double.TryParse(rp[3], out rcy) ? rcy : 0;
+                        string rectErr = Modeling.ModelingOps.DrawRect(app, rw, rh, rcx, rcy);
+                        return rectErr == null ? $"OK rect {rw}x{rh}mm" : $"ERR {rectErr}";
+
+                    case "CIRCLE":
+                        // CIRCLE <d> [cx] [cy]
+                        var cp = arg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (cp.Length < 1) return "ERR usage: CIRCLE <d_mm> [cx_mm] [cy_mm]";
+                        if (!double.TryParse(cp[0], out double cd)) return "ERR bad d";
+                        double ccx = cp.Length > 1 && double.TryParse(cp[1], out ccx) ? ccx : 0;
+                        double ccy = cp.Length > 2 && double.TryParse(cp[2], out ccy) ? ccy : 0;
+                        string circleErr = Modeling.ModelingOps.DrawCircle(app, cd, ccx, ccy);
+                        return circleErr == null ? $"OK circle d={cd}mm" : $"ERR {circleErr}";
+
+                    case "EXTRUDE":
+                        if (!double.TryParse(arg, out double ed)) return "ERR usage: EXTRUDE <depth_mm>";
+                        string extErr = Modeling.ModelingOps.Extrude(app, ed);
+                        return extErr == null ? $"OK extrude {ed}mm" : $"ERR {extErr}";
+
                     default:
-                        return $"ERR unknown cmd: {cmd}. Usage: CUBE|NEW|NAME|RENAME|TREE";
+                        return $"ERR unknown cmd: {cmd}";
                 }
             }
             catch (Exception ex) { return $"ERR {ex.GetType().Name}: {ex.Message}"; }

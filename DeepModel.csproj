@@ -23,5 +23,6 @@
       <EmbedInteropTypes>True</EmbedInteropTypes>
     </Reference>
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Web.Extensions" />
   </ItemGroup>
 </Project>

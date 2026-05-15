@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using SolidWorks.Interop.sldworks;
 using SolidWorks.Interop.swconst;
 using SolidWorks.Interop.swpublished;
+using DeepModel.Agent;
 using DeepModel.Modeling;
 using DeepModel.Pipe;
 using DeepModel.UI;
@@ -18,10 +19,12 @@ namespace DeepModel
         private ISldWorks _swApp;
         private int _cookie;
         private PipeServer _pipeServer;
+        private AgentEngine _agentEngine;
 
         private const int GroupUID = 50001;
         private const int CmdUID_Cube = 50002;
-        private const int CmdUID_Agent = 50003;
+        private const int CmdUID_Console = 50003;
+        private const int CmdUID_Agent = 50004;
         private const string TabName = "DeepModel";
         private const string PipeName = "DeepModel_Pipe";
 
@@ -34,8 +37,7 @@ namespace DeepModel
             int docType = (int)swDocumentTypes_e.swDocPART;
 
             _swApp.AddMenuItem2(docType, _cookie, "生成正方体", -1,
-                "CreateCube", "CreateCubeEnable",
-                "输入边长参数，生成正方体");
+                "CreateCube", "CreateCubeEnable", "输入边长参数，生成正方体");
 
             CreateCommandTab(docType);
             StartPipeServer();
@@ -52,8 +54,7 @@ namespace DeepModel
                 if (cmdMgr != null)
                 {
                     cmdMgr.RemoveCommandGroup(GroupUID);
-                    var tab = cmdMgr.GetCommandTab(
-                        (int)swDocumentTypes_e.swDocPART, TabName);
+                    var tab = cmdMgr.GetCommandTab((int)swDocumentTypes_e.swDocPART, TabName);
                     if (tab != null) cmdMgr.RemoveCommandTab(tab);
                 }
             }
@@ -69,7 +70,7 @@ namespace DeepModel
             int err = 0;
             object gid = cmdMgr.CreateCommandGroup2(
                 GroupUID, TabName, TabName,
-                "参数化建模 + Agent 控制", -1, true, ref err);
+                "参数化建模 + Agent", -1, true, ref err);
 
             var cg = (CommandGroup)gid;
 
@@ -80,14 +81,20 @@ namespace DeepModel
                 (int)(swCommandItemType_e.swMenuItem | swCommandItemType_e.swToolbarItem));
 
             int cmd2 = cg.AddCommandItem2(
-                "Agent控制台", -1,
-                "打开 Agent 控制台（Pipe 通信）", TabName, -1,
-                "AgentConsole", "", CmdUID_Agent,
+                "Pipe控制台", -1,
+                "打开 Pipe 命令控制台", TabName, -1,
+                "PipeConsole", "", CmdUID_Console,
+                (int)(swCommandItemType_e.swMenuItem | swCommandItemType_e.swToolbarItem));
+
+            int cmd3 = cg.AddCommandItem2(
+                "AI Agent", -1,
+                "打开 AI Agent 对话窗口", TabName, -1,
+                "AgentChat", "", CmdUID_Agent,
                 (int)(swCommandItemType_e.swMenuItem | swCommandItemType_e.swToolbarItem));
 
             var tab = cmdMgr.AddCommandTab(docType, TabName);
             var box = tab.AddCommandTabBox();
-            box.AddCommands(new int[] { cmd1, cmd2 }, new int[] { 0, 0 });
+            box.AddCommands(new int[] { cmd1, cmd2, cmd3 }, new int[] { 0, 0, 0 });
 
             cg.HasToolbar = true;
             cg.HasMenu = true;
@@ -104,6 +111,40 @@ namespace DeepModel
             _pipeServer.Start();
         }
 
+        private AgentEngine GetOrCreateAgent()
+        {
+            if (_agentEngine == null)
+            {
+                var cfg = AgentConfig.LoadAndOpen();
+                if (string.IsNullOrWhiteSpace(cfg.ApiKey))
+                {
+                    MessageBox.Show(
+                        $"配置文件已打开。请将 ApiKey 改为你的 DeepSeek API Key:\n\n" +
+                        $"{AgentConfig.ConfigPath}\n\n" +
+                        "注意: JSON key 必须用 PascalCase（ApiKey, Model, BaseUrl...）",
+                        "DeepModel Agent - 配置 API Key");
+                    return null;
+                }
+
+                _agentEngine = new AgentEngine(cfg, msg =>
+                {
+                    // 同步发送 pipe 命令。AgentEngine 在后台线程调用此方法。
+                    using (var c = new System.IO.Pipes.NamedPipeClientStream(".", PipeName,
+                        System.IO.Pipes.PipeDirection.InOut))
+                    {
+                        c.Connect(5000);
+                        using (var r = new System.IO.StreamReader(c))
+                        using (var w = new System.IO.StreamWriter(c) { AutoFlush = true })
+                        {
+                            w.WriteLine(msg);
+                            return r.ReadLine() ?? "ERR no response";
+                        }
+                    }
+                });
+            }
+            return _agentEngine;
+        }
+
         // ===== SW 回调 =====
 
         public int CreateCube()
@@ -118,14 +159,27 @@ namespace DeepModel
             }
         }
 
-        public int AgentConsole()
+        public int PipeConsole()
         {
             if (_pipeServer == null) { MessageBox.Show("Pipe 未启动。"); return 0; }
             new AgentForm(PipeName).Show();
             return 0;
         }
 
+        public int AgentChat()
+        {
+            if (_pipeServer == null) { MessageBox.Show("Pipe 未启动。"); return 0; }
+            var engine = GetOrCreateAgent();
+            if (engine == null) return 0;
+            engine.Reset();
+            var form = new AgentChatForm(engine);
+            engine.OnStatus = form.SetStatus; // 状态回调 → UI
+            form.Show();
+            return 0;
+        }
+
         public int CreateCubeEnable() => 1;
-        public int AgentConsoleEnable() => 1;
+        public int PipeConsoleEnable() => 1;
+        public int AgentChatEnable() => 1;
     }
 }
