@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -26,9 +27,35 @@ namespace DeepModel.UI
             ClientSize = new Size(520, 380);
 
             int y = 10;
+
+            // Quick buttons
+            var quickCmds = new[] {
+                ("NEW",    "新建零件"),
+                ("NAME",   "获取名称"),
+                ("TREE",   "设计树"),
+                ("CUBE 100","正方体100"),
+                ("CUBE 200","正方体200"),
+            };
+            int bx = 12;
+            foreach (var (cmd, label) in quickCmds)
+            {
+                var btn = new Button
+                {
+                    Text = label,
+                    Location = new Point(bx, y),
+                    Width = 78,
+                    Height = 24,
+                    Tag = cmd
+                };
+                btn.Click += (s, e2) => Send(((Button)s).Tag.ToString());
+                Controls.Add(btn);
+                bx += 82;
+            }
+            y += 30;
+
             Controls.Add(new Label
             {
-                Text = "协议: CUBE <边长mm>   |   示例: CUBE 200",
+                Text = "命令: CUBE <mm> | NEW | NAME | RENAME <name> | TREE",
                 Location = new Point(12, y),
                 AutoSize = true
             });
@@ -57,7 +84,7 @@ namespace DeepModel.UI
             {
                 Location = new Point(12, y),
                 Width = 490,
-                Height = 280,
+                Height = 250,
                 ReadOnly = true,
                 BackColor = Color.FromArgb(30, 30, 30),
                 ForeColor = Color.LightGreen,
@@ -70,7 +97,14 @@ namespace DeepModel.UI
                 if (e.Control && e.KeyCode == Keys.Enter) OnSend(null, null);
             };
 
-            Log("DeepModel Agent 就绪。");
+            Log("DeepModel Agent ready.");
+        }
+
+        private void Send(string cmd)
+        {
+            if (string.IsNullOrEmpty(cmd)) return;
+            _txtCmd.Text = cmd;
+            OnSend(null, null);
         }
 
         private void OnSend(object sender, EventArgs e)
@@ -103,7 +137,15 @@ namespace DeepModel.UI
                     using (var w = new StreamWriter(c) { AutoFlush = true })
                     {
                         w.WriteLine(msg);
-                        return r.ReadLine() ?? "ERR no response";
+                        string resp = r.ReadLine() ?? "ERR no response";
+                        // 格式化 TREE 响应：将 | 分隔展开为多行
+                        if (resp.StartsWith("OK ") && resp.Contains("|"))
+                        {
+                            var parts = resp.Split('|');
+                            if (parts.Length > 2)
+                                resp = parts[0] + "\n  " + string.Join("\n  ", parts.Skip(1));
+                        }
+                        return resp;
                     }
                 }
             }

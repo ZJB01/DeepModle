@@ -70,23 +70,49 @@ namespace DeepModel.Pipe
             Log("Stopped");
         }
 
-        /// <summary>解析命令并执行。子类可重写此方法扩展协议。</summary>
+        /// <summary>协议分发。支持: CUBE, NEW, NAME, RENAME, TREE</summary>
         protected virtual string Dispatch(string request)
         {
             try
             {
                 var parts = request.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length < 2) return "ERR format: CUBE <mm>";
-
                 string cmd = parts[0].ToUpperInvariant();
-                if (cmd != "CUBE") return $"ERR unknown cmd: {cmd}";
-
-                if (!double.TryParse(parts[1], out double mm) || mm <= 0)
-                    return "ERR bad value";
+                string arg = parts.Length > 1 ? parts[1] : "";
 
                 ISldWorks app = (ISldWorks)Marshal.GetActiveObject("SldWorks.Application");
-                string err = Modeling.CubeBuilder.Build(app, mm);
-                return err == null ? $"OK cube {mm}mm created" : $"ERR {err}";
+
+                switch (cmd)
+                {
+                    case "CUBE":
+                        if (!double.TryParse(arg, out double mm) || mm <= 0)
+                            return "ERR bad value, usage: CUBE <mm>";
+                        string cubeErr = Modeling.CubeBuilder.Build(app, mm);
+                        return cubeErr == null ? $"OK cube {mm}mm created" : $"ERR {cubeErr}";
+
+                    case "NEW":
+                        string newErr = Modeling.DocumentOps.CreateNewPart(app);
+                        return newErr == null ? "OK new part created" : $"ERR {newErr}";
+
+                    case "NAME":
+                        string nameErr = Modeling.DocumentOps.GetTitle(app, out string title);
+                        return nameErr == null ? $"OK {title}" : $"ERR {nameErr}";
+
+                    case "RENAME":
+                        if (string.IsNullOrWhiteSpace(arg)) return "ERR usage: RENAME <new_name>";
+                        string renErr = Modeling.DocumentOps.SetTitle(app, arg);
+                        return renErr == null ? $"OK renamed to {arg}" : $"ERR {renErr}";
+
+                    case "TREE":
+                        string treeErr = Modeling.DocumentOps.GetDesignTree(app, out string tree);
+                        if (treeErr != null) return $"ERR {treeErr}";
+                        if (string.IsNullOrEmpty(tree)) return "OK (empty)";
+                        // 单行输出，用 | 分隔特征
+                        var lines = tree.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        return $"OK {lines.Length}|{string.Join("|", lines)}";
+
+                    default:
+                        return $"ERR unknown cmd: {cmd}. Usage: CUBE|NEW|NAME|RENAME|TREE";
+                }
             }
             catch (Exception ex) { return $"ERR {ex.GetType().Name}: {ex.Message}"; }
         }
