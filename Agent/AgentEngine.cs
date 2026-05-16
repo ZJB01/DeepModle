@@ -16,6 +16,7 @@ namespace DeepModel.Agent
         private readonly string _logPath;
 
         private List<Dictionary<string, object>> _messages;
+        private List<string> _toolLog; // 记录本轮工具调用
 
         /// <summary>可设置的状态回调，用于更新 UI 状态标签</summary>
         public Action<string> OnStatus { get; set; }
@@ -31,6 +32,17 @@ namespace DeepModel.Agent
         public void Reset()
         {
             _messages = new List<Dictionary<string, object>>
+            {
+                new Dictionary<string, object> { ["role"] = "system", ["content"] = SystemPrompt.Text }
+            };
+            _toolLog = new List<string>();
+        }
+
+        public List<Dictionary<string, object>> GetMessages() => _messages;
+
+        public void SetMessages(List<Dictionary<string, object>> msgs)
+        {
+            _messages = msgs ?? new List<Dictionary<string, object>>
             {
                 new Dictionary<string, object> { ["role"] = "system", ["content"] = SystemPrompt.Text }
             };
@@ -82,6 +94,7 @@ namespace DeepModel.Agent
                         Status($"执行工具: {funcName}");
                         Log($"Tool call: {funcName}({args})");
                         string result = ExecuteTool(funcName, args);
+                        _toolLog.Add($"{funcName} | {result}");
                         Log($"Tool result: {result}");
 
                         _messages.Add(new Dictionary<string, object>
@@ -97,9 +110,23 @@ namespace DeepModel.Agent
                 else
                 {
                     string content = msg.ContainsKey("content") ? (msg["content"] as string) : "";
-                    Log($"Final response (len={content?.Length ?? 0}): \"{content?.Substring(0, Math.Min(content?.Length ?? 0, 200))}\"");
+                    Log($"Final response (len={content?.Length ?? 0})");
                     _messages.Add(new Dictionary<string, object> { ["role"] = "assistant", ["content"] = content });
                     Status("就绪");
+
+                    // 附加工具调用顺序表
+                    if (_toolLog.Count > 0)
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        sb.AppendLine();
+                        sb.AppendLine("**工具调用顺序:**");
+                        for (int i = 0; i < _toolLog.Count; i++)
+                        {
+                            var parts = _toolLog[i].Split(new[] { '|' }, 2);
+                            sb.AppendLine($"`{(i + 1)}. {parts[0].Trim()}` → {parts[1].Trim()}");
+                        }
+                        return (content ?? "") + sb.ToString();
+                    }
                     return content ?? "";
                 }
             }
@@ -167,7 +194,7 @@ namespace DeepModel.Agent
                     case "get_name":      return _pipeSend("NAME");
                     case "rename_part":   string rn = args.ContainsKey("name") ? args["name"].ToString() : "";
                                           return _pipeSend($"RENAME {rn}");
-                    case "get_tree":      return _pipeSend("TREE");
+                    case "get_tree":      return _pipeSend("DETAIL");
                     case "sketch_start":  string plane = args.ContainsKey("plane") ? args["plane"].ToString() : "FRONT";
                                           return _pipeSend($"SKETCH {plane}");
                     case "draw_rect":     double w = GetNum(args, "width_mm");
@@ -175,12 +202,24 @@ namespace DeepModel.Agent
                                           double cx = GetNum(args, "center_x_mm");
                                           double cy = GetNum(args, "center_y_mm");
                                           return _pipeSend($"RECT {w} {h} {cx} {cy}");
+                    case "draw_line":     double lx1 = GetNum(args, "x1_mm");
+                                          double ly1 = GetNum(args, "y1_mm");
+                                          double lx2 = GetNum(args, "x2_mm");
+                                          double ly2 = GetNum(args, "y2_mm");
+                                          return _pipeSend($"LINE {lx1} {ly1} {lx2} {ly2}");
                     case "draw_circle":   double d = GetNum(args, "diameter_mm");
                                           double ccx = GetNum(args, "center_x_mm");
                                           double ccy = GetNum(args, "center_y_mm");
                                           return _pipeSend($"CIRCLE {d} {ccx} {ccy}");
                     case "extrude":       double ed = GetNum(args, "depth_mm");
                                           return _pipeSend($"EXTRUDE {ed}");
+                    case "extrude_cut":   double ecd = GetNum(args, "depth_mm");
+                                          return _pipeSend($"EXTRUDE_CUT {ecd}");
+                    case "rename_feature": string oldN = args.ContainsKey("old_name") ? args["old_name"].ToString() : "";
+                                           string newN = args.ContainsKey("new_name") ? args["new_name"].ToString() : "";
+                                           return _pipeSend($"RENAME_FEATURE {oldN} {newN}");
+                    case "delete_feature": string dn = args.ContainsKey("name") ? args["name"].ToString() : "";
+                                           return _pipeSend($"DELETE_FEATURE {dn}");
                     default:              return $"ERR unknown tool: {name}";
                 }
             }
@@ -212,9 +251,17 @@ namespace DeepModel.Agent
                 MakeTool("get_name", "Get the file name of the currently active SolidWorks document.", null, new string[0]),
                 MakeTool("rename_part", "Rename and save the current document.",
                     new Dictionary<string, object> { ["name"] = Prop("string", "New file name without extension") }, new[] { "name" }),
-                MakeTool("get_tree", "Read the FeatureManager design tree of the active document.", null, new string[0]),
+                MakeTool("get_tree", "Read detailed feature information: names, types, extrusion depths, dimensions, sketch segments.", null, new string[0]),
                 MakeTool("sketch_start", "Start a sketch on a specified plane. Call this BEFORE any draw/extrude commands.",
                     new Dictionary<string, object> { ["plane"] = Prop("string", "Plane name: FRONT, TOP, or RIGHT") }, new[] { "plane" }),
+                MakeTool("draw_line", "Draw a line on the active sketch. Dimensions in mm.",
+                    new Dictionary<string, object>
+                    {
+                        ["x1_mm"] = Prop("number", "Start X in mm"),
+                        ["y1_mm"] = Prop("number", "Start Y in mm"),
+                        ["x2_mm"] = Prop("number", "End X in mm"),
+                        ["y2_mm"] = Prop("number", "End Y in mm")
+                    }, new[] { "x1_mm", "y1_mm", "x2_mm", "y2_mm" }),
                 MakeTool("draw_rect", "Draw a center-based rectangle on the active sketch. Dimensions in mm.",
                     new Dictionary<string, object>
                     {
@@ -230,8 +277,19 @@ namespace DeepModel.Agent
                         ["center_x_mm"] = Prop("number", "Center X offset in mm (default 0)"),
                         ["center_y_mm"] = Prop("number", "Center Y offset in mm (default 0)")
                     }, new[] { "diameter_mm" }),
-                MakeTool("extrude", "Extrude the current sketch to create a solid feature.",
-                    new Dictionary<string, object> { ["depth_mm"] = Prop("number", "Extrusion depth in mm") }, new[] { "depth_mm" })
+                MakeTool("extrude", "Extrude the current sketch to create a solid feature. Always verify with get_tree afterwards.",
+                    new Dictionary<string, object> { ["depth_mm"] = Prop("number", "Extrusion depth in mm") }, new[] { "depth_mm" }),
+                MakeTool("extrude_cut", "Cut-extrude the current sketch to remove material. May fail if cut area does not intersect solid body.",
+                    new Dictionary<string, object> { ["depth_mm"] = Prop("number", "Cut depth in mm") }, new[] { "depth_mm" }),
+                MakeTool("rename_feature", "Rename a feature or sketch in the design tree.",
+                    new Dictionary<string, object>
+                    {
+                        ["old_name"] = Prop("string", "Current feature name"),
+                        ["new_name"] = Prop("string", "New feature name")
+                    }, new[] { "old_name", "new_name" }),
+                MakeTool("delete_feature", "Delete a feature or sketch by name.",
+                    new Dictionary<string, object> { ["name"] = Prop("string", "Feature or sketch name to delete") },
+                    new[] { "name" })
             };
         }
 

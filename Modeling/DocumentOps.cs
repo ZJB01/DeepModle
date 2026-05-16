@@ -35,32 +35,8 @@ namespace DeepModel.Modeling
             var doc = app.ActiveDoc as IModelDoc2;
             if (doc == null) return "no document";
 
-            string fullPath = doc.GetPathName();
-            if (string.IsNullOrEmpty(fullPath))
-            {
-                string dir = System.Environment.GetFolderPath(
-                    System.Environment.SpecialFolder.Desktop);
-                string newPath = System.IO.Path.Combine(dir, newTitle);
-                if (!newPath.EndsWith(".SLDPRT", StringComparison.OrdinalIgnoreCase))
-                    newPath += ".SLDPRT";
-
-                int ver = (int)swSaveAsVersion_e.swSaveAsCurrentVersion;
-                if (doc.SaveAs3(newPath, ver, 0) != 0)
-                    return "SaveAs returned error";
-            }
-            else
-            {
-                string dir = System.IO.Path.GetDirectoryName(fullPath);
-                string newPath = System.IO.Path.Combine(dir, newTitle);
-                string ext = System.IO.Path.GetExtension(fullPath);
-                if (!newPath.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
-                    newPath += ext;
-
-                int ver = (int)swSaveAsVersion_e.swSaveAsCurrentVersion;
-                if (doc.SaveAs3(newPath, ver, 0) != 0)
-                    return "SaveAs returned error";
-            }
-
+            // 纯内存重命名，不写磁盘。用户需手动 Ctrl+S 保存
+            doc.SetTitle2(newTitle);
             return null;
         }
 

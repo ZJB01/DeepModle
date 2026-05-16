@@ -12,8 +12,9 @@ namespace DeepModel.Agent
         public string Model { get; set; } = "deepseek-chat";
         public string BaseUrl { get; set; } = "https://api.deepseek.com/v1";
         public int MaxTokens { get; set; } = 4096;
+        public int ContextTokens { get; set; } = 65536;
         public double Temperature { get; set; } = 0.3;
-        public int MaxToolRounds { get; set; } = 5;
+        public int MaxToolRounds { get; set; } = 50;
 
         public static string ConfigDir => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DeepModel");
@@ -44,6 +45,7 @@ namespace DeepModel.Agent
                     Model         = GetStr(raw, "model", "Model", "deepseek-chat"),
                     BaseUrl       = GetStr(raw, "base_url", "BaseUrl", "https://api.deepseek.com/v1"),
                     MaxTokens     = GetInt(raw, "max_tokens", "MaxTokens", 4096),
+                    ContextTokens = GetInt(raw, "context_tokens", "ContextTokens", 65536),
                     Temperature   = GetDbl(raw, "temperature", "Temperature", 0.3),
                     MaxToolRounds = GetInt(raw, "max_tool_rounds", "MaxToolRounds", 5)
                 };

@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using SolidWorks.Interop.sldworks;
@@ -168,14 +169,18 @@ namespace DeepModel
 
         public int AgentChat()
         {
-            if (_pipeServer == null) { MessageBox.Show("Pipe 未启动。"); return 0; }
-            var engine = GetOrCreateAgent();
-            if (engine == null) return 0;
-            engine.Reset();
-            var form = new AgentChatForm(engine);
-            engine.OnStatus = form.SetStatus; // 状态回调 → UI
-            form.Show();
-            return 0;
+            try
+            {
+                if (_pipeServer == null) { MessageBox.Show("Pipe 未启动。"); return 0; }
+                var engine = GetOrCreateAgent();
+                if (engine == null) return 0;
+                engine.Reset();
+                var form = new AgentChatForm(engine);
+                engine.OnStatus = s => form.SetStatusText(s, Color.FromArgb(255, 200, 50));
+                form.Show();
+                return 0;
+            }
+            catch (Exception ex) { MessageBox.Show("Agent error: " + ex.Message); return 0; }
         }
 
         public int CreateCubeEnable() => 1;

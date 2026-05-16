@@ -126,7 +126,6 @@ namespace DeepModel.Pipe
                         return rectErr == null ? $"OK rect {rw}x{rh}mm" : $"ERR {rectErr}";
 
                     case "CIRCLE":
-                        // CIRCLE <d> [cx] [cy]
                         var cp = arg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                         if (cp.Length < 1) return "ERR usage: CIRCLE <d_mm> [cx_mm] [cy_mm]";
                         if (!double.TryParse(cp[0], out double cd)) return "ERR bad d";
@@ -135,10 +134,43 @@ namespace DeepModel.Pipe
                         string circleErr = Modeling.ModelingOps.DrawCircle(app, cd, ccx, ccy);
                         return circleErr == null ? $"OK circle d={cd}mm" : $"ERR {circleErr}";
 
+                    case "LINE":
+                        var lp = arg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (lp.Length < 4) return "ERR usage: LINE <x1_mm> <y1_mm> <x2_mm> <y2_mm>";
+                        if (!double.TryParse(lp[0], out double x1)) return "ERR bad x1";
+                        if (!double.TryParse(lp[1], out double y1)) return "ERR bad y1";
+                        if (!double.TryParse(lp[2], out double x2)) return "ERR bad x2";
+                        if (!double.TryParse(lp[3], out double y2)) return "ERR bad y2";
+                        string lineErr = Modeling.ModelingOps.DrawLine(app, x1, y1, x2, y2);
+                        return lineErr == null ? $"OK line ({x1},{y1})-({x2},{y2})" : $"ERR {lineErr}";
+
                     case "EXTRUDE":
                         if (!double.TryParse(arg, out double ed)) return "ERR usage: EXTRUDE <depth_mm>";
                         string extErr = Modeling.ModelingOps.Extrude(app, ed);
                         return extErr == null ? $"OK extrude {ed}mm" : $"ERR {extErr}";
+
+                    case "EXTRUDE_CUT":
+                        if (!double.TryParse(arg, out double ecd)) return "ERR usage: EXTRUDE_CUT <depth_mm>";
+                        string cutErr = Modeling.ModelingOps.ExtrudeCut(app, ecd);
+                        return cutErr == null ? $"OK extrude cut {ecd}mm" : $"ERR {cutErr}";
+
+                    case "RENAME_FEATURE":
+                        var rf = arg.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                        if (rf.Length < 2) return "ERR usage: RENAME_FEATURE <old_name> <new_name>";
+                        string rfErr = Modeling.ModelingOps.RenameFeature(app, rf[0], rf[1]);
+                        return rfErr == null ? $"OK renamed {rf[0]} -> {rf[1]}" : $"ERR {rfErr}";
+
+                    case "DELETE_FEATURE":
+                        if (string.IsNullOrWhiteSpace(arg)) return "ERR usage: DELETE_FEATURE <name>";
+                        string delErr = Modeling.ModelingOps.DeleteFeature(app, arg);
+                        return delErr == null ? $"OK deleted {arg}" : $"ERR {delErr}";
+
+                    case "DETAIL":
+                        string detErr = Modeling.FeatureInspector.GetDetails(app, out string det);
+                        if (detErr != null) return "ERR " + detErr;
+                        if (string.IsNullOrEmpty(det)) return "OK (empty)";
+                        var dl = det.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        return $"OK {dl.Length}|{string.Join("|", dl)}";
 
                     default:
                         return $"ERR unknown cmd: {cmd}";
