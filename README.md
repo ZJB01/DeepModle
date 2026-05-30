@@ -2,7 +2,6 @@
 
 自然语言驱动 SolidWorks 三维建模的 AI Agent 插件。基于 .NET Framework 4.8 + SolidWorks 2023 API + DeepSeek Function Calling。
 
-![DeepModel](Capture001.png)
 
 ## 功能
 
